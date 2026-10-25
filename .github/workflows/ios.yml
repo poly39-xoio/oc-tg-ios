@@ -1,0 +1,245 @@
+name: iOS Build
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  TG_REPO: poly39-xoio/tg-oc-skin
+  TG_REF: main
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      # Fast fail: compile the Swift shell with a placeholder page before the
+      # (slow) Telegram web build, so syntax errors surface in ~1 minute.
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Compile shell (placeholder web dir)
+        run: |
+          set -o pipefail
+          mkdir -p Resources/web
+          echo '<!doctype html><title>placeholder</title>' > Resources/web/index.html
+          xcodegen generate
+          xcodebuild \
+            -project OC.xcodeproj \
+            -scheme OC \
+            -sdk iphonesimulator \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Checkout Telegram web source
+        uses: actions/checkout@v4
+        with:
+          repository: poly39-xoio/tg-oc-skin
+          ref: main
+          path: tgsrc
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Build Telegram web client
+        working-directory: tgsrc
+        env:
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+        run: |
+          set -euo pipefail
+          npm ci --no-audit --no-fund
+          npm run build:production
+
+      - name: Stage web assets into app bundle
+        run: |
+          set -euo pipefail
+          rm -rf Resources/web
+          mkdir -p Resources/web
+          rsync -a \
+            --exclude '*.map' \
+            --exclude 'build-stats.json' \
+            --exclude 'statoscope-report.html' \
+            tgsrc/dist/ Resources/web/
+          du -sh Resources/web
+          test -f Resources/web/index.html
+
+      - name: Build for simulator
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project OC.xcodeproj \
+            -scheme OC \
+            -sdk iphonesimulator \
+            -configuration Debug \
+            -derivedDataPath build \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Simulator smoke test
+        run: |
+          set -euxo pipefail
+          UDID=$(xcrun simctl list devices available -j | python3 -c "
+import json,sys
+d=json.load(sys.stdin)['devices']
+for rt,devs in d.items():
+    if 'iOS' not in rt: continue
+    for dev in devs:
+        if dev['name'].startswith('iPhone'):
+            print(dev['udid']); sys.exit(0)
+sys.exit(1)")
+          echo "UDID=$UDID"
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b
+          APP="build/Build/Products/Debug-iphonesimulator/OC.app"
+          ls -la "$APP"
+          xcrun simctl install "$UDID" "$APP"
+          xcrun simctl launch "$UDID" io.xoio.oc || true
+          sleep 30
+          xcrun simctl io "$UDID" screenshot smoke.png
+          echo "--- app process ---"
+          xcrun simctl spawn "$UDID" launchctl list | grep -i io.xoio.oc || echo "NOT RUNNING"
+          echo "--- app logs ---"
+          xcrun simctl spawn "$UDID" log show --last 3m --predicate 'process == "OC"' --style compact | tail -80 || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke
+          path: smoke.png
+          retention-days: 7
+
+  archive:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: macos-26
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout Telegram web source
+        uses: actions/checkout@v4
+        with:
+          repository: poly39-xoio/tg-oc-skin
+          ref: main
+          path: tgsrc
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Build Telegram web client
+        working-directory: tgsrc
+        env:
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+        run: |
+          set -euo pipefail
+          npm ci --no-audit --no-fund
+          npm run build:production
+
+      - name: Stage web assets into app bundle
+        run: |
+          set -euo pipefail
+          rm -rf Resources/web
+          mkdir -p Resources/web
+          rsync -a --exclude '*.map' --exclude 'build-stats.json' --exclude 'statoscope-report.html' tgsrc/dist/ Resources/web/
+          du -sh Resources/web
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate project
+        run: xcodegen generate
+
+      - name: Prepare App Store Connect key
+        run: |
+          mkdir -p ~/private_keys
+          printf '%s' "${{ secrets.ASC_KEY_P8 }}" > ~/private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8
+          chmod 600 ~/private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8
+
+      - name: Import signing certificate
+        env:
+          DIST_P12_BASE64: ${{ secrets.DIST_P12_BASE64 }}
+          DIST_P12_PW: ${{ secrets.DIST_P12_PW }}
+          PROFILE_BASE64: ${{ secrets.PROFILE_BASE64_OC }}
+          PROFILE_UUID: ${{ secrets.PROFILE_UUID_OC }}
+        run: |
+          set -euo pipefail
+          KC="$RUNNER_TEMP/build.keychain-db"
+          security create-keychain -p "" "$KC"
+          security set-keychain-settings -lut 21600 "$KC"
+          security unlock-keychain -p "" "$KC"
+          echo -n "$DIST_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/dist.p12"
+          security import "$RUNNER_TEMP/dist.p12" -k "$KC" -P "$DIST_P12_PW" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" "$KC" >/dev/null
+          security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
+          security find-identity -v -p codesigning "$KC"
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          echo -n "$PROFILE_BASE64" | base64 --decode > "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
+          echo "profile installed: $PROFILE_UUID"
+
+      - name: Archive
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project OC.xcodeproj \
+            -scheme OC \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/OC.xcarchive \
+            MARKETING_VERSION=1.0 \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            DEVELOPMENT_TEAM=${{ secrets.TEAM_ID }} \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            PROVISIONING_PROFILE_SPECIFIER="${{ secrets.PROFILE_NAME_OC }}" \
+            OTHER_CODE_SIGN_FLAGS="--keychain $RUNNER_TEMP/build.keychain-db" \
+            archive
+
+      - name: Export IPA
+        run: |
+          cat > ExportOptions.plist <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>teamID</key><string>__TEAM_ID__</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>provisioningProfiles</key>
+            <dict><key>io.xoio.oc</key><string>__PROFILE_NAME__</string></dict>
+            <key>uploadSymbols</key><true/>
+          </dict>
+          </plist>
+          PLIST
+          sed -i '' "s/__TEAM_ID__/${{ secrets.TEAM_ID }}/" ExportOptions.plist
+          sed -i '' "s/__PROFILE_NAME__/${{ secrets.PROFILE_NAME_OC }}/" ExportOptions.plist
+          xcodebuild -exportArchive \
+            -archivePath build/OC.xcarchive \
+            -exportOptionsPlist ExportOptions.plist \
+            -exportPath build/export \
+            OTHER_CODE_SIGN_FLAGS="--keychain $RUNNER_TEMP/build.keychain-db" \
+            -authenticationKeyPath ~/private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8 \
+            -authenticationKeyID ${{ secrets.ASC_KEY_ID }} \
+            -authenticationKeyIssuerID ${{ secrets.ASC_ISSUER_ID }}
+
+      - name: Inspect IPA
+        run: |
+          ls -la build/export
+          du -sh build/export/OC.ipa || true
+
+      - name: Upload to TestFlight
+        run: |
+          xcrun altool --upload-app \
+            -f build/export/OC.ipa \
+            -t ios \
+            --apiKey ${{ secrets.ASC_KEY_ID }} \
+            --apiIssuer ${{ secrets.ASC_ISSUER_ID }} \
+            --verbose

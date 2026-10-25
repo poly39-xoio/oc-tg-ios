@@ -1,0 +1,8 @@
+web/
+Resources/web/
+build/
+DerivedData/
+*.ipa
+*.xcarchive
+smoke.png
+.DS_Store

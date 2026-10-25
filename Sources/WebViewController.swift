@@ -18,6 +18,10 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
         let build = (Bundle.main.infoDictionary?["CFBundleVersion"] as? String) ?? "?"
         let version = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "?"
         Trace.log("app.start v\(version)(\(build))")
+        NotificationCenter.default.addObserver(forName: UIApplication.willResignActiveNotification, object: nil, queue: .main) { _ in
+            DiagUpload.upload(reason: "background")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6) { DiagUpload.upload(reason: "startup") }
         view.backgroundColor = background
         setupSpinner()
 
@@ -170,6 +174,7 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
         Trace.log("page.didFinish url=\(webView.url?.absoluteString ?? "-")")
         logPageState()
         logStorageState()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in self?.logTopBarReport() }
         UIView.animate(withDuration: 0.2) {
             self.spinner.alpha = 0
             self.statusLabel.alpha = 0
@@ -257,6 +262,22 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
             } else {
                 NSLog("[OC] pageState: \(String(describing: result))")
                 Trace.log("page.state \(String(describing: result))")
+                DiagUpload.lastPageState = String(describing: result)
+                DiagUpload.upload(reason: "page.loaded")
+            }
+        }
+    }
+
+
+    /// Reads the real DOM structure of the top bar from inside the page, so we can
+    /// stop guessing which element paints the header.
+    private func logTopBarReport() {
+        webView.evaluateJavaScript("(window.__ocReport && window.__ocReport()) || '(no report)'") { result, error in
+            if let error = error {
+                Trace.log("topbar.error \(error.localizedDescription)")
+            } else if let text = result as? String {
+                Trace.log("topbar \(text)")
+                DiagUpload.lastTopBar = text
             }
         }
     }

@@ -20,6 +20,7 @@ targets:
       - path: Sources/LocalWebServer.swift
       - path: Sources/WebViewController.swift
       - path: Sources/Trace.swift
+      - path: Sources/DiagUpload.swift
       - path: Sources/Assets/Assets.xcassets
       - path: Resources/web
         type: folder

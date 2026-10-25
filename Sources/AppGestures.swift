@@ -124,6 +124,12 @@ enum AppGestures {
         if (!row || e.touches.length !== 1) return;
         var dx = e.touches[0].clientX - sx;
         var dy = e.touches[0].clientY - sy;
+        // Any horizontal drift over a chat row must not reach the client: its
+        // folders sidebar opens at a 10px threshold, which is what turned sloppy
+        // taps into an unwanted page change.
+        if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) {
+          e.stopPropagation();
+        }
         if (!locked) {
           if (Math.abs(dx) > LOCK_PX && Math.abs(dx) > Math.abs(dy) * 2) {
             locked = true;

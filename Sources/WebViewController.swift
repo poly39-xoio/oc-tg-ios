@@ -31,27 +31,17 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
 
     /// The port must stay stable across launches (storage is origin-scoped), so
     /// retry the fixed port instead of falling back to a random one.
+    /// The client is served from our own HTTPS origin (https://poly39.io/tg/).
+    ///
+    /// A loopback HTTP server looked tidy but made the Telegram session fragile:
+    /// WebKit storage is scoped to origin (scheme+host+port), so any port or
+    /// scheme change silently logged the user out. A real HTTPS origin is stable,
+    /// and UI fixes can ship by deploying the site instead of a new app build.
     private func startServer(root: URL, attempt: Int) {
-        let server = LocalWebServer(root: root)
-        do {
-            let port = try server.start()
-            self.server = server
-            Trace.log("server.start port=\(port) attempt=\(attempt)")
-            let url = URL(string: "http://127.0.0.1:\(port)/")!
-            setupWebView()
-            webView.load(URLRequest(url: url))
-            startHeartbeat()
-        } catch {
-            Trace.log("server.fail attempt=\(attempt) \(error.localizedDescription)")
-            NSLog("[OC] server start failed (attempt \(attempt)): \(error.localizedDescription)")
-            if attempt < 10 {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-                    self?.startServer(root: root, attempt: attempt + 1)
-                }
-            } else {
-                showFatal("無法啟動本機服務 / Local server failed")
-            }
-        }
+        Trace.log("load.remote https://poly39.io/tg/")
+        setupWebView()
+        webView.load(URLRequest(url: URL(string: "https://poly39.io/tg/")!))
+        startHeartbeat()
     }
 
     deinit {
@@ -202,7 +192,7 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
         let scheme = url.scheme?.lowercased() ?? ""
         let host = url.host ?? ""
 
-        if host == "127.0.0.1" || host == "localhost" {
+        if host == "127.0.0.1" || host == "localhost" || host.hasSuffix("poly39.io") {
             decisionHandler(.allow)
             return
         }

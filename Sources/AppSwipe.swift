@@ -139,9 +139,25 @@ enum AppSwipe {
         });
       }
 
+      /* Layout: keep the last message clear of the composer. The shell renders
+         the page edge-to-edge, so the client's own bottom reserve can be short. */
+      function reserveComposerSpace() {
+        var composer = document.querySelector('.Composer');
+        if (!composer) return;
+        var h = Math.ceil(composer.getBoundingClientRect().height);
+        if (!h) return;
+        var pad = h + 16;
+        document.documentElement.style.setProperty('--oc-composer-reserve', pad + 'px');
+        var lists = document.querySelectorAll('.messages-container, .MessageList, .chat .MessageList');
+        for (var i = 0; i < lists.length; i++) {
+          lists[i].style.setProperty('padding-bottom', pad + 'px', 'important');
+        }
+      }
+
       function scan() {
         var nodes = document.querySelectorAll('.ListItem-button');
         for (var i = 0; i < nodes.length; i++) attach(nodes[i]);
+        reserveComposerSpace();
       }
 
       var timer = null;
@@ -153,6 +169,8 @@ enum AppSwipe {
       if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', schedule);
       else schedule();
       window.addEventListener('load', schedule);
+      window.addEventListener('resize', reserveComposerSpace);
+      window.setInterval(reserveComposerSpace, 2000);
       try {
         new MutationObserver(schedule).observe(document.documentElement, { childList: true, subtree: true });
       } catch (e) {}

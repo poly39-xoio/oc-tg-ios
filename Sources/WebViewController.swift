@@ -7,6 +7,7 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
     private var server: LocalWebServer?
     private let spinner = UIActivityIndicatorView(style: .large)
     private let statusLabel = UILabel()
+    private var heartbeat: Timer?
 
     private let background = UIColor(red: 0.35, green: 0.41, blue: 0.47, alpha: 1.0) // #5A6A78-ish slate
     /// Matches the skin's top bar (#3F4A54) so the status-bar strip blends in.
@@ -14,6 +15,9 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        let build = (Bundle.main.infoDictionary?["CFBundleVersion"] as? String) ?? "?"
+        let version = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "?"
+        Trace.log("app.start v\(version)(\(build))")
         view.backgroundColor = background
         setupSpinner()
 
@@ -28,10 +32,13 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
         do {
             let port = try server.start()
             self.server = server
+            Trace.log("server.start port=\(port) attempt=\(attempt)")
             let url = URL(string: "http://127.0.0.1:\(port)/")!
             setupWebView()
             webView.load(URLRequest(url: url))
+            startHeartbeat()
         } catch {
+            Trace.log("server.fail attempt=\(attempt) \(error.localizedDescription)")
             NSLog("[OC] server start failed (attempt \(attempt)): \(error.localizedDescription)")
             if attempt < 10 {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
@@ -97,11 +104,26 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
         statusBackground.translatesAutoresizingMaskIntoConstraints = false
         view.insertSubview(statusBackground, belowSubview: webView)
 
+        // Diagnostics affordance: a tiny, low-contrast "i" in the status strip.
+        let diagButton = UIButton(type: .system)
+        diagButton.setTitle("i", for: .normal)
+        diagButton.setTitleColor(.white, for: .normal)
+        diagButton.titleLabel?.font = .systemFont(ofSize: 11, weight: .bold)
+        diagButton.alpha = 0.35
+        diagButton.translatesAutoresizingMaskIntoConstraints = false
+        diagButton.addTarget(self, action: #selector(showDiagnostics), for: .touchUpInside)
+        view.insertSubview(diagButton, belowSubview: webView)
+
         NSLayoutConstraint.activate([
             statusBackground.topAnchor.constraint(equalTo: view.topAnchor),
             statusBackground.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             statusBackground.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             statusBackground.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+
+            diagButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 4),
+            diagButton.centerYAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: -12),
+            diagButton.widthAnchor.constraint(equalToConstant: 24),
+            diagButton.heightAnchor.constraint(equalToConstant: 24),
 
             webView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             webView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
@@ -117,9 +139,34 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
         statusLabel.textAlignment = .center
     }
 
+    private func startHeartbeat() {
+        heartbeat?.invalidate()
+        heartbeat = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { _ in
+            Trace.log("tick mem=\(Trace.residentMB())MB")
+        }
+    }
+
+    // MARK: - Diagnostics (long-press the status strip)
+
+    @objc private func showDiagnostics() {
+        let crash = (try? String(contentsOf: URL(fileURLWithPath: NSHomeDirectory())
+            .appendingPathComponent("Documents/crash.log"), encoding: .utf8)) ?? "(no crash log)"
+        let text = "== crash ==\n\(crash.suffix(1200))\n\n== trace ==\n\(Trace.tail(80))"
+        let alert = UIAlertController(title: "OC 診斷", message: text, preferredStyle: .actionSheet)
+        alert.addAction(UIAlertAction(title: "複製", style: .default) { _ in
+            UIPasteboard.general.string = text
+        })
+        alert.addAction(UIAlertAction(title: "清除記錄", style: .destructive) { _ in
+            Trace.clear()
+        })
+        alert.addAction(UIAlertAction(title: "關閉", style: .cancel))
+        present(alert, animated: true)
+    }
+
     // MARK: - WKNavigationDelegate
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        Trace.log("page.didFinish url=\(webView.url?.absoluteString ?? "-")")
         logPageState()
         logStorageState()
         UIView.animate(withDuration: 0.2) {
@@ -204,8 +251,10 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
         webView.evaluateJavaScript(js) { result, error in
             if let error = error {
                 NSLog("[OC] pageState error: \(error.localizedDescription)")
+                Trace.log("page.state.error \(error.localizedDescription)")
             } else {
                 NSLog("[OC] pageState: \(String(describing: result))")
+                Trace.log("page.state \(String(describing: result))")
             }
         }
     }

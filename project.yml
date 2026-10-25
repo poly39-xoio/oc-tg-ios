@@ -19,6 +19,7 @@ targets:
       - path: Sources/AppDelegate.swift
       - path: Sources/LocalWebServer.swift
       - path: Sources/WebViewController.swift
+      - path: Sources/AppGestures.swift
       - path: Sources/Trace.swift
       - path: Sources/DiagUpload.swift
       - path: Sources/Assets/Assets.xcassets

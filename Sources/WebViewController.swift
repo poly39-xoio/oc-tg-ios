@@ -74,6 +74,7 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
         configuration.allowsInlineMediaPlayback = true
         configuration.mediaTypesRequiringUserActionForPlayback = []
         configuration.defaultWebpagePreferences.allowsContentJavaScript = true
+        configuration.userContentController.addUserScript(AppGestures.makeScript())
 
         if #available(iOS 14.0, *) {
             configuration.defaultWebpagePreferences.preferredContentMode = .mobile

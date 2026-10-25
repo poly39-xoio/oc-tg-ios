@@ -9,6 +9,8 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
     private let statusLabel = UILabel()
 
     private let background = UIColor(red: 0.35, green: 0.41, blue: 0.47, alpha: 1.0) // #5A6A78-ish slate
+    /// Matches the skin's top bar (#3F4A54) so the status-bar strip blends in.
+    private let topBarColor = UIColor(red: 0.247, green: 0.290, blue: 0.329, alpha: 1.0)
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -75,8 +77,21 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
         webView.scrollView.backgroundColor = background
         webView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(webView)
+
+        // Keep the web content below the notch/status bar: the Telegram header's
+        // back button sat too close to the screen edge when the page ran full-bleed.
+        let statusBackground = UIView()
+        statusBackground.backgroundColor = topBarColor
+        statusBackground.translatesAutoresizingMaskIntoConstraints = false
+        view.insertSubview(statusBackground, belowSubview: webView)
+
         NSLayoutConstraint.activate([
-            webView.topAnchor.constraint(equalTo: view.topAnchor),
+            statusBackground.topAnchor.constraint(equalTo: view.topAnchor),
+            statusBackground.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            statusBackground.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            statusBackground.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+
+            webView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             webView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             webView.trailingAnchor.constraint(equalTo: view.trailingAnchor)

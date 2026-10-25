@@ -86,15 +86,7 @@ jobs:
       - name: Simulator smoke test
         run: |
           set -euxo pipefail
-          UDID=$(xcrun simctl list devices available -j | python3 -c "
-import json,sys
-d=json.load(sys.stdin)['devices']
-for rt,devs in d.items():
-    if 'iOS' not in rt: continue
-    for dev in devs:
-        if dev['name'].startswith('iPhone'):
-            print(dev['udid']); sys.exit(0)
-sys.exit(1)")
+          UDID=$(xcrun simctl list devices available | grep -E '^ +iPhone' | head -1 | grep -oE '[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}')
           echo "UDID=$UDID"
           xcrun simctl boot "$UDID" || true
           xcrun simctl bootstatus "$UDID" -b

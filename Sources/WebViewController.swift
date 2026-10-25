@@ -121,6 +121,7 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         logPageState()
+        logStorageState()
         UIView.animate(withDuration: 0.2) {
             self.spinner.alpha = 0
             self.statusLabel.alpha = 0
@@ -171,6 +172,23 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
     }
 
     /// Console evidence for CI smoke tests: what the web app actually rendered.
+    /// Persisted WebKit data for our origin — used to verify the Telegram session
+    /// survives relaunch (origin is host:port, so the port must never change).
+    private func logStorageState() {
+        let store = WKWebsiteDataStore.default()
+        store.fetchDataRecords(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes()) { records in
+            let mine = records.filter { $0.displayName.contains("127.0.0.1") }
+            NSLog("[OC] storage records total=\(records.count) loopback=\(mine.count)")
+            for record in mine {
+                let size = record.dataTypes.joined(separator: ",")
+                NSLog("[OC] storage origin=\(record.displayName) types=\(size)")
+            }
+        }
+        webView.configuration.websiteDataStore.httpCookieStore.getAllCookies { cookies in
+            NSLog("[OC] cookies total=\(cookies.count) loopback=\(cookies.filter { $0.domain.contains("127.0.0.1") }.count)")
+        }
+    }
+
     private func logPageState() {
         let js = """
         JSON.stringify({

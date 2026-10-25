@@ -85,21 +85,27 @@ jobs:
 
       - name: Simulator smoke test
         run: |
-          set -euxo pipefail
-          UDID=$(xcrun simctl list devices available | grep -E '^ +iPhone' | head -1 | grep -oE '[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}')
+          set -euo pipefail
+          UDID=$(xcrun simctl list devices available | awk -F '[()]' '/iPhone/{print $2; exit}')
+          if [ -z "${UDID:-}" ]; then echo "no iPhone simulator found"; xcrun simctl list devices available; exit 1; fi
           echo "UDID=$UDID"
           xcrun simctl boot "$UDID" || true
           xcrun simctl bootstatus "$UDID" -b
           APP="build/Build/Products/Debug-iphonesimulator/OC.app"
           ls -la "$APP"
           xcrun simctl install "$UDID" "$APP"
-          xcrun simctl launch "$UDID" io.xoio.oc || true
-          sleep 30
+          echo "--- launch #1 ---"
+          xcrun simctl launch "$UDID" io.xoio.oc
+          sleep 25
           xcrun simctl io "$UDID" screenshot smoke.png
-          echo "--- app process ---"
           xcrun simctl spawn "$UDID" launchctl list | grep -i io.xoio.oc || echo "NOT RUNNING"
+          echo "--- relaunch (session persistence check) ---"
+          xcrun simctl terminate "$UDID" io.xoio.oc || true
+          sleep 2
+          xcrun simctl launch "$UDID" io.xoio.oc
+          sleep 20
           echo "--- app logs ---"
-          xcrun simctl spawn "$UDID" log show --last 3m --predicate 'process == "OC"' --style compact | tail -80 || true
+          xcrun simctl spawn "$UDID" log show --last 3m --predicate 'process == "OC"' --style compact | grep -a "\[OC\]" || true
 
       - uses: actions/upload-artifact@v4
         if: always()

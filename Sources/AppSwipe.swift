@@ -112,7 +112,7 @@ enum AppSwipe {
           var dx = e.touches[0].clientX - sx;
           var dy = e.touches[0].clientY - sy;
           if (!locked) {
-            if (Math.abs(dx) > 14 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+            if (Math.abs(dx) > 30 && Math.abs(dx) > Math.abs(dy) * 2) {
               locked = true; dragging = true;
               rightRail.style.display = dx < 0 ? 'flex' : 'none';
               leftRail.style.display = dx > 0 ? 'flex' : 'none';
@@ -132,8 +132,9 @@ enum AppSwipe {
           var m = /translateX\((-?[\d.]+)px\)/.exec(row.style.transform || '');
           var cur = m ? parseFloat(m[1]) : 0;
           row.style.transition = 'transform 160ms ease';
-          if (cur < -60) row.style.transform = 'translateX(-' + OPEN_X + 'px)';
-          else if (cur > 60) row.style.transform = 'translateX(' + OPEN_X + 'px)';
+          var need = Math.max(72, row.getBoundingClientRect().width * 0.35);
+          if (cur < -need) row.style.transform = 'translateX(-' + OPEN_X + 'px)';
+          else if (cur > need) row.style.transform = 'translateX(' + OPEN_X + 'px)';
           else close(row);
         });
       }

@@ -244,16 +244,22 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
 
     private func logPageState() {
         let js = """
-        JSON.stringify({
+        (function () {
+          try {
+            return JSON.stringify({
           title: document.title,
           href: location.href,
           hasSubtle: !!(window.crypto && window.crypto.subtle),
           isSecureContext: window.isSecureContext,
           hasWasm: typeof WebAssembly === 'object',
-          skin: getComputedStyle(document.documentElement).getPropertyValue('--oc-skin-version')
+          skin: getComputedStyle(document.documentElement).getPropertyValue('--oc-skin-version'),
           bodyLen: document.body ? document.body.innerText.length : -1,
-          text: document.body ? document.body.innerText.replace(/\\s+/g, ' ').slice(0, 180) : ''
-        })
+              text: document.body ? document.body.innerText.replace(/\\s+/g, ' ').slice(0, 180) : ''
+            });
+          } catch (e) {
+            return 'js-error: ' + e;
+          }
+        })()
         """
         webView.evaluateJavaScript(js) { result, error in
             if let error = error {

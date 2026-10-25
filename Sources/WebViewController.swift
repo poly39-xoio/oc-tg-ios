@@ -74,7 +74,6 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
         configuration.allowsInlineMediaPlayback = true
         configuration.mediaTypesRequiringUserActionForPlayback = []
         configuration.defaultWebpagePreferences.allowsContentJavaScript = true
-        configuration.userContentController.addUserScript(AppSwipe.makeScript())
 
         if #available(iOS 14.0, *) {
             configuration.defaultWebpagePreferences.preferredContentMode = .mobile
@@ -122,7 +121,7 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
             diagButton.heightAnchor.constraint(equalToConstant: 24),
 
             webView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            webView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            webView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
             webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             webView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
         ])

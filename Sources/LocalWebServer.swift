@@ -13,6 +13,10 @@ final class LocalWebServer {
     private let queue = DispatchQueue(label: "io.xoio.oc.webserver", qos: .userInitiated)
     private var listener: NWListener?
     private(set) var port: UInt16 = 0
+    /// Storage (IndexedDB/localStorage) is scoped to origin, and the origin
+    /// includes the port. A random port would wipe the Telegram session on every
+    /// launch, so always serve from the same fixed port.
+    static let fixedPort: UInt16 = 47823
 
     private static let mimeTypes: [String: String] = [
         "html": "text/html; charset=utf-8",
@@ -49,7 +53,7 @@ final class LocalWebServer {
     func start() throws -> UInt16 {
         let params = NWParameters.tcp
         params.allowLocalEndpointReuse = true
-        params.requiredLocalEndpoint = .hostPort(host: .ipv4(.loopback), port: 0)
+        params.requiredLocalEndpoint = .hostPort(host: .ipv4(.loopback), port: NWEndpoint.Port(rawValue: Self.fixedPort)!)
 
         let listener = try NWListener(using: params)
         listener.newConnectionHandler = { [weak self] connection in

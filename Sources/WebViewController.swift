@@ -18,7 +18,13 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
         setupSpinner()
 
         let webRoot = (Bundle.main.resourceURL ?? Bundle.main.bundleURL).appendingPathComponent("web", isDirectory: true)
-        let server = LocalWebServer(root: webRoot)
+        startServer(root: webRoot, attempt: 1)
+    }
+
+    /// The port must stay stable across launches (storage is origin-scoped), so
+    /// retry the fixed port instead of falling back to a random one.
+    private func startServer(root: URL, attempt: Int) {
+        let server = LocalWebServer(root: root)
         do {
             let port = try server.start()
             self.server = server
@@ -26,8 +32,14 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
             setupWebView()
             webView.load(URLRequest(url: url))
         } catch {
-            NSLog("[OC] failed to start local server: \(error.localizedDescription)")
-            showFatal("無法啟動本機服務 / Local server failed")
+            NSLog("[OC] server start failed (attempt \(attempt)): \(error.localizedDescription)")
+            if attempt < 10 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                    self?.startServer(root: root, attempt: attempt + 1)
+                }
+            } else {
+                showFatal("無法啟動本機服務 / Local server failed")
+            }
         }
     }
 

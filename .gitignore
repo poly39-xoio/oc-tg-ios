@@ -6,3 +6,7 @@ DerivedData/
 *.xcarchive
 smoke.png
 .DS_Store
+oc_profile.mobileprovision
+.oc_profile.b64
+*.p12
+*.p8

@@ -93,6 +93,7 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
     // MARK: - WKNavigationDelegate
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        logPageState()
         UIView.animate(withDuration: 0.2) {
             self.spinner.alpha = 0
             self.statusLabel.alpha = 0
@@ -140,6 +141,28 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
             UIApplication.shared.open(url, options: [:], completionHandler: nil)
         }
         decisionHandler(.cancel)
+    }
+
+    /// Console evidence for CI smoke tests: what the web app actually rendered.
+    private func logPageState() {
+        let js = """
+        JSON.stringify({
+          title: document.title,
+          href: location.href,
+          hasSubtle: !!(window.crypto && window.crypto.subtle),
+          isSecureContext: window.isSecureContext,
+          hasWasm: typeof WebAssembly === 'object',
+          bodyLen: document.body ? document.body.innerText.length : -1,
+          text: document.body ? document.body.innerText.replace(/\\s+/g, ' ').slice(0, 180) : ''
+        })
+        """
+        webView.evaluateJavaScript(js) { result, error in
+            if let error = error {
+                NSLog("[OC] pageState error: \(error.localizedDescription)")
+            } else {
+                NSLog("[OC] pageState: \(String(describing: result))")
+            }
+        }
     }
 
     // MARK: - WKUIDelegate

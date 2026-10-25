@@ -29,12 +29,12 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
 }
 
 // Crash evidence for the on-device diagnostics sheet.
-func ocCrashSignalHandler(_ signal: Int32) {
+func ocCrashSignalHandler(_ sig: Int32) {
     let stack = Thread.callStackSymbols.joined(separator: "\n")
-    let line = "signal=\(signal)\n\(stack)\n"
+    let line = "signal=\(sig)\n\(stack)\n"
     if let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
         try? line.write(to: dir.appendingPathComponent("crash.log"), atomically: true, encoding: .utf8)
     }
-    signal(signal, SIG_DFL)
-    raise(signal)
+    signal(sig, SIG_DFL)
+    raise(sig)
 }

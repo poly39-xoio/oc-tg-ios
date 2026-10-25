@@ -106,7 +106,8 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
 
         // Diagnostics affordance: a tiny, low-contrast "i" in the status strip.
         let diagButton = UIButton(type: .system)
-        diagButton.setTitle("i", for: .normal)
+        let buildNumber = (Bundle.main.infoDictionary?["CFBundleVersion"] as? String) ?? "?"
+        diagButton.setTitle("i \(buildNumber)", for: .normal)
         diagButton.setTitleColor(.white, for: .normal)
         diagButton.titleLabel?.font = .systemFont(ofSize: 11, weight: .bold)
         diagButton.alpha = 0.35
@@ -244,6 +245,7 @@ final class WebViewController: UIViewController, WKNavigationDelegate, WKUIDeleg
           hasSubtle: !!(window.crypto && window.crypto.subtle),
           isSecureContext: window.isSecureContext,
           hasWasm: typeof WebAssembly === 'object',
+          skin: getComputedStyle(document.documentElement).getPropertyValue('--oc-skin-version')
           bodyLen: document.body ? document.body.innerText.length : -1,
           text: document.body ? document.body.innerText.replace(/\\s+/g, ' ').slice(0, 180) : ''
         })
